@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# Set command name and version
+command_name="internsctl"
+command_version="v0.1.0"
+
+# Get filename and options from command line arguments
+filename="$3"
+options="$4"
+
+# Function to get file information
+get_file_info() {
+    # Retrieve file information using the stat command
+    file_info=$(ls -l "$filename")
+
+    # Extract file attributes from the output
+    file_permissions=$(echo "$file_info" | awk '{print $1}')
+    file_owner=$(echo "$file_info" | awk '{print $3}')
+    group_owner=$(echo "$file_info" | awk '{print $4}')
+    file_size=$(echo "$file_info" | awk '{print $5}')
+
+    # Display file information based on specified options
+    case "$options" in
+        --size | -s)
+            echo "Size(B): $file_size"
+            ;;
+        --permissions | -p)
+            echo "Access: $file_permissions"
+            ;;
+        --owner | -o)
+            echo "Owner: $file_owner"
+            ;;
+        --last-modified | -m)
+            echo $(stat "$filename" | grep -e Modify)
+            ;;
+        *)
+            echo "File: $filename"
+            echo "Access: $file_permissions"
+            echo "Size(B): $file_size"
+            echo "Owner: $file_owner"
+            echo $(stat "$filename" | grep -e Modify)
+            ;;
+    esac
+}
+
+# Function to get memory information
+get_memory_info() {
+    # Retrieve memory information using the free command
+    free -m | awk '{
+        printf("%-20s: %10s%10s%10s\n", $1, $2, $3, $4)
+    } END {
+        printf("\n%-20s | %-10s | %-10s | %-10s\n", "Total", "Used", "Free", "Buff/Cache")
+    }'
+}
+
+# Function to create a new user
+create_user() {
+    # Extract username from command line arguments
+    username="$3"
+
+    # Check if the username already exists
+    if id -u "$username" >/dev/null 2>&1; then
+        echo "Error: User '$username' already exists."
+        exit 1
+    fi
+
+    # Create the user account
+    sudo useradd -m "$username"
+    echo "User '$username' created successfully."
+}
+
+# Function to list all regular users
+list_users() {
+    # Retrieve a list of all users from the system
+    users=$(cut -d ':' -f 1 /etc/passwd)
+
+    # Filter regular users (UID >= 1000)
+    regular_users=()
+    for user in $users; do
+        user_id=$(id -u "$user")
+        if ((user_id >= 1000)); then
+            regular_users+=("$user")
+        fi
+    done
+
+    # Display list of regular users
+    echo "Regular Users:"
+    echo "${regular_users[@]}"
+}
+
+# Function to list users with sudo permissions
+list_sudo_users() {
+    # Retrieve a list of users with sudo privileges
+    sudo_users=$(grep sudo /etc/group | cut -d ':' -f 4)
+
+    # Display list of sudo users
+    echo "Users with Sudo Privileges:"
+    echo "${sudo_users[@]}"
+}
+
+# Handle command options
+case "$1" in
+    --help)
+        # Display help message
+        echo "internsctl -- Manage interns"
+        echo "Available options:"
+        echo "  --help     Display this help message"
+        echo "  --version  Show command version"
+        echo ""
+        exit 0
+        ;;
+    --version)
+        # Display command version
+        echo "$command_name $command_version"
+        exit 0
+        ;;
+    cpu)
+        if [[ "$2" == "getinfo" ]]; then
+            # Get CPU information
+            cpu_info=$(lscpu)
+
+            # Display CPU information
+            echo "CPU Information:"
+            echo "$cpu_info"
+        fi
+        exit 0
+        ;;
+    memory)
+        # Handle memory command options
+        if [[ "$2" == "getinfo" ]]; then
+            get_memory_info
+        fi
+        exit 0
+        ;;
+    user)
+        # Handle user command options
+        if [[ "$2" == "create" ]]; then
+            create_user
+        elif [[ "$2" == "list" ]]; then
+            list_users
+        elif [[ "$2" == "list" && "$3" == "--sudo-only" ]]; then
+            list_sudo_users
+        fi
+        exit 0
+        ;;
+    file)
+        if [[ "$2" == "getinfo" ]]; then
+            # Get file information
+            get_file_info
+        fi
+        exit 0
+        ;;
+esac
